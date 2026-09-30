@@ -1,81 +1,45 @@
 """
 ================================================================================
-CRUCE DE CONTABILIDAD vs PLE DIARIO (SUNAT) - VERSIÓN 2.1
+CRUCE DE CONTABILIDAD vs PLE DIARIO (SUNAT) - AÑO 2024
 ================================================================================
-Autor: Antigravity Assistant para Corporación COMATPE SAC
-Repositorio: https://github.com/Xannarchy/Contanet-cruce-de-PLE-VS-Registro-contable.git
-
-Descripción:
-- Soporte dinámico multianual (2022, 2023, 2024, etc.) con detección automática o parámetro --year.
-- Carga de alta velocidad mediante motor 'calamine' en Rust.
-- Normalización contable: eliminación de puntos en cuentas contables (ej. 10.1.1.01 -> 101101).
-- Clave de conciliación compuesta:
-    Clave = Reg_Ctb/Voucher | Fec_Mov/Fecha | Nro_Cta (sin puntos) | Mto_Debe | Mto_Haber
-- Manejo de ocurrencias (#0, #1...) para cruce 1 a 1 exacto sin duplicación cartesiana.
-- Garantía de tipo entero para OCURRENCIA (evita bug de float64 '#0.0' ante fechas o valores nulos).
-- Generación de Excel optimizado con streaming 'constant_memory' (3 hojas: RESUMEN, DIFERENCIAS, CRUCE_COMPLETO).
+Empresa: CORPORACIÓN COMATPE SAC
+RUC: 20516403650
+Archivo Reporte Contabilidad: Reporte de Contabilidad Fecha 01-01-2024 al 31-12-2024.xlsx
+Archivo PLE Diario          : Mensual ple diario 2024 decl.xlsx
+Archivo de Salida           : Cruce_Contabilidad_vs_PLE_Diario_2024.xlsx
+================================================================================
 """
 
 import os
 import sys
 import time
-import argparse
-import glob
 import pandas as pd
 import numpy as np
 import xlsxwriter
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="Conciliación entre Reporte de Contabilidad y PLE Diario Mensual")
-    parser.add_argument("--year", type=int, default=2024, help="Año a procesar (por defecto: 2024)")
-    parser.add_argument("--dir", type=str, default=r"c:\Users\Sistemas\Downloads", help="Directorio con los archivos de origen")
-    return parser.parse_args()
-
-def find_file(directory, patterns):
-    for pattern in patterns:
-        matches = glob.glob(os.path.join(directory, pattern))
-        if matches:
-            # Retornar el archivo con mayor tamaño si hay duplicados
-            matches.sort(key=os.path.getsize, reverse=True)
-            return matches[0]
-    return None
-
 def main():
     start_time = time.time()
-    args = parse_args()
-    year = args.year
-    downloads_dir = args.dir
+    year = 2024
+    downloads_dir = r"c:\Users\Sistemas\Downloads"
 
-    print("================================================================================")
-    print(f" INICIANDO CRUCE CONTABILIDAD vs PLE DIARIO - AÑO {year} (V2.0)")
-    print("================================================================================")
-
-    # 1. LOCALIZACIÓN DE ARCHIVOS
-    reporte_patterns = [
-        f"Reporte de Contabilidad Fecha 01-01-{year} al 31-12-{year}.xlsx",
-        f"*Contabilidad*{year}*.xlsx"
-    ]
-    ple_patterns = [
-        f"Mensual ple diario {year} decl.xlsx",
-        f"*ple*diario*{year}*.xlsx",
-        f"*{year}*ple*.xlsx"
-    ]
-
-    file_reporte = find_file(downloads_dir, reporte_patterns)
-    file_ple = find_file(downloads_dir, ple_patterns)
-
-    if not file_reporte:
-        raise FileNotFoundError(f"No se encontró el archivo del Reporte de Contabilidad para el año {year} en '{downloads_dir}'.")
-    if not file_ple:
-        raise FileNotFoundError(f"No se encontró el archivo del PLE Diario para el año {year} en '{downloads_dir}'.")
-
+    file_reporte = os.path.join(downloads_dir, f"Reporte de Contabilidad Fecha 01-01-{year} al 31-12-{year}.xlsx")
+    file_ple = os.path.join(downloads_dir, f"Mensual ple diario {year} decl.xlsx")
     output_excel = os.path.join(downloads_dir, f"Cruce_Contabilidad_vs_PLE_Diario_{year}.xlsx")
+
+    print("================================================================================")
+    print(f" INICIANDO CRUCE CONTABILIDAD vs PLE DIARIO - AÑO {year}")
+    print("================================================================================")
+
+    if not os.path.exists(file_reporte):
+        raise FileNotFoundError(f"No se encontró el archivo: '{file_reporte}'")
+    if not os.path.exists(file_ple):
+        raise FileNotFoundError(f"No se encontró el archivo: '{file_ple}'")
 
     print(f"Archivo Reporte Contabilidad : {os.path.basename(file_reporte)} ({os.path.getsize(file_reporte)/(1024*1024):.2f} MB)")
     print(f"Archivo PLE Diario           : {os.path.basename(file_ple)} ({os.path.getsize(file_ple)/(1024*1024):.2f} MB)")
     print(f"Archivo Excel de Salida      : {os.path.basename(output_excel)}")
 
-    # 2. CARGA Y PROCESAMIENTO DEL REPORTE DE CONTABILIDAD
+    # 1. CARGA Y PROCESAMIENTO DEL REPORTE DE CONTABILIDAD
     print(f"\n[1/4] Leyendo '{os.path.basename(file_reporte)}' con calamine...")
     t0 = time.time()
     cols_rep = [
@@ -122,7 +86,7 @@ def main():
     df_rep['CLAVE_MATCH'] = df_rep['CLAVE_CONCAT'] + "#" + df_rep['OCURRENCIA']
     print(f"      -> {len(df_rep):,} registros contables válidos normalizados.")
 
-    # 3. CARGA Y PROCESAMIENTO DEL PLE DIARIO
+    # 2. CARGA Y PROCESAMIENTO DEL PLE DIARIO
     print(f"\n[2/4] Leyendo '{os.path.basename(file_ple)}' con calamine...")
     t1 = time.time()
     cols_ple = [
@@ -168,7 +132,7 @@ def main():
     df_ple['CLAVE_MATCH'] = df_ple['CLAVE_CONCAT'] + "#" + df_ple['OCURRENCIA']
     print(f"      -> {len(df_ple):,} registros PLE válidos normalizados.")
 
-    # 4. FULL OUTER JOIN
+    # 3. FULL OUTER JOIN
     print(f"\n[3/4] Ejecutando Full Outer Join para el año {year}...")
     t2 = time.time()
     rep_merge_cols = [
@@ -206,16 +170,16 @@ def main():
     )
 
     conteo_estado = merged['ESTADO_CRUCE'].value_counts()
-    n_coincide = conteo_estado.get('COINCIDE', 0)
-    n_solo_rep = conteo_estado.get('SOLO EN REPORTE', 0)
-    n_solo_ple = conteo_estado.get('SOLO EN PLE', 0)
+    n_coincide = int(conteo_estado.get('COINCIDE', 0))
+    n_solo_rep = int(conteo_estado.get('SOLO EN REPORTE', 0))
+    n_solo_ple = int(conteo_estado.get('SOLO EN PLE', 0))
 
     print(f"\n=== RESUMEN DE COINCIDENCIAS AÑO {year} ===")
-    print(f"  Total Coincidencias Exactas : {n_coincide:,} ({(n_coincide/len(df_ple))*100:.1f}% de PLE)")
+    print(f"  Total Coincidencias Exactas : {n_coincide:,} ({(n_coincide/len(df_ple))*100:.2f}% de PLE)")
     print(f"  Solo en Reporte Contable    : {n_solo_rep:,}")
     print(f"  Solo en PLE Diario          : {n_solo_ple:,}")
 
-    # 5. EXPORTACIÓN A EXCEL OPTIMIZADA (xlsxwriter streaming)
+    # 4. EXPORTACIÓN A EXCEL OPTIMIZADA (xlsxwriter streaming)
     print(f"\n[4/4] Generando archivo Excel en '{output_excel}'...")
     t3 = time.time()
 
@@ -251,30 +215,30 @@ def main():
     # HOJA 1: RESUMEN
     # --------------------------------------------------------------------------
     ws_resumen = workbook.add_worksheet('RESUMEN')
-    ws_resumen.set_column('A:A', 36)
-    ws_resumen.set_column('B:E', 20)
+    ws_resumen.set_column('A:A', 40)
+    ws_resumen.set_column('B:E', 22)
 
     ws_resumen.write('A1', f'REPORTE EJECUTIVO DE CONCILIACIÓN CONTABLE vs PLE DIARIO {year}', fmt_title)
     ws_resumen.write('A2', f'Empresa: CORPORACIÓN COMATPE SAC | RUC: 20516403650 | Fecha Cruce: {time.strftime("%d/%m/%Y %H:%M")}', fmt_bold)
 
     ws_resumen.write_row(4, 0, ['MÉTRICA / CONCEPTO', 'CANTIDAD REGISTROS', 'TOTAL DEBE (S/.)', 'TOTAL HABER (S/.)', '% DEL TOTAL'], fmt_header)
 
-    sum_rep_debe = df_rep['REP_Debe_Num'].sum()
-    sum_rep_haber = df_rep['REP_Haber_Num'].sum()
-    sum_ple_debe = df_ple['PLE_Debe_Num'].sum()
-    sum_ple_haber = df_ple['PLE_Haber_Num'].sum()
+    sum_rep_debe = float(df_rep['REP_Debe_Num'].sum())
+    sum_rep_haber = float(df_rep['REP_Haber_Num'].sum())
+    sum_ple_debe = float(df_ple['PLE_Debe_Num'].sum())
+    sum_ple_haber = float(df_ple['PLE_Haber_Num'].sum())
 
     coinciden_rows = merged[merged['ESTADO_CRUCE'] == 'COINCIDE']
-    sum_coincide_debe = coinciden_rows['REP_Debe_Num'].sum()
-    sum_coincide_haber = coinciden_rows['REP_Haber_Num'].sum()
+    sum_coincide_debe = float(coinciden_rows['REP_Debe_Num'].sum())
+    sum_coincide_haber = float(coinciden_rows['REP_Haber_Num'].sum())
 
     solo_rep_rows = merged[merged['ESTADO_CRUCE'] == 'SOLO EN REPORTE']
-    sum_solo_rep_debe = solo_rep_rows['REP_Debe_Num'].sum()
-    sum_solo_rep_haber = solo_rep_rows['REP_Haber_Num'].sum()
+    sum_solo_rep_debe = float(solo_rep_rows['REP_Debe_Num'].sum())
+    sum_solo_rep_haber = float(solo_rep_rows['REP_Haber_Num'].sum())
 
     solo_ple_rows = merged[merged['ESTADO_CRUCE'] == 'SOLO EN PLE']
-    sum_solo_ple_debe = solo_ple_rows['PLE_Debe_Num'].sum()
-    sum_solo_ple_haber = solo_ple_rows['PLE_Haber_Num'].sum()
+    sum_solo_ple_debe = float(solo_ple_rows['PLE_Debe_Num'].sum())
+    sum_solo_ple_haber = float(solo_ple_rows['PLE_Haber_Num'].sum())
 
     filas_resumen = [
         (f'1. Total Registros Reporte Contabilidad {year}', len(df_rep), sum_rep_debe, sum_rep_haber, '-'),
